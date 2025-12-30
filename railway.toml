@@ -1,0 +1,7 @@
+[build]
+builder = "DOCKERFILE"
+dockerfile = "Dockerfile"
+
+[build.args]
+CACHE_BUST = "1"
+RAILWAY_GIT_COMMIT_SHA = "${RAILWAY_GIT_COMMIT_SHA}"
