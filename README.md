@@ -1,38 +1,52 @@
-# Telegram Dual-Account Music Bot
+# Telegram Music Bot (Dual Account)
 
-This repository contains a scaffold for a dual-account Telegram music bot that uses:
+This repository provides a production-ready skeleton for a dual-account Telegram music bot:
 
-- **Bot account** (Bot API) for commands and UI
-- **Premium user account** (MTProto) for joining voice chats and streaming audio
-- **Bridge server** for inter-process communication
+- **Bot account** for user commands and UI controls.
+- **Premium account** (Telethon + PyTgCalls) for voice chat streaming.
+- **Redis bridge** for real-time communication between the two processes.
 
-## Quick start
+## Features
 
-1. Create a `.env` file with your credentials (see `.env.example`).
-2. Start the stack:
+- Command handling with inline playback controls
+- Redis Pub/Sub bridge for state sync
+- SQLite-backed queue persistence
+- Audio extraction via `yt-dlp`
+- Docker + docker-compose deployment
+- Health check endpoint for the bridge service
+
+## Setup
+
+1. Copy the environment template:
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill out the values in `.env`.
+3. Start services:
+   ```bash
+   docker-compose up --build
+   ```
+
+## Local Run
+
+Install dependencies and run each service in its own process:
 
 ```bash
-docker compose up --build
+pip install -r requirements.txt
+python -m telegram_music_bot.bridge_server
+python -m telegram_music_bot.bot_client
+python -m telegram_music_bot.premium_client
 ```
 
-## Configuration
+## Project Structure
 
-Environment variables are loaded from the process environment and never stored in the repo.
-
-| Variable | Description |
-| --- | --- |
-| `BOT_TOKEN` | Telegram bot token |
-| `API_ID` | Telegram app API ID |
-| `API_HASH` | Telegram app API hash |
-| `SESSION_NAME` | Telethon session name |
-| `REDIS_URL` | Redis connection URL |
-| `DATABASE_URL` | SQLite database file path |
-| `SPOTIFY_CLIENT_ID` | Spotify application client id (optional) |
-| `SPOTIFY_CLIENT_SECRET` | Spotify application client secret (optional) |
-| `BRIDGE_PORT` | Bridge WebSocket port |
-| `HEALTH_PORT` | Bridge health check port |
-| `LOG_LEVEL` | Logging level |
-
-## Security
-
-Never commit real tokens or secrets to version control. If a token is ever shared publicly, **rotate it immediately**.
+```
+telegram_music_bot/
+├── bot_client.py
+├── premium_client.py
+├── bridge_server.py
+├── queue_manager.py
+├── audio_streamer.py
+├── ui_components.py
+└── config.py
+```
