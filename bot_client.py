@@ -7,6 +7,8 @@ from typing import Any
 
 import redis.asyncio as redis
 from telegram import Update
+from telegram.error import NetworkError, TimedOut
+from telegram.request import HTTPXRequest
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -149,7 +151,16 @@ async def main() -> None:
     config = load_bot_config()
     logging.basicConfig(level=config.log_level)
 
-    application = Application.builder().token(config.bot_token).build()
+    # Increase Telegram HTTP timeouts (Railway can be jittery during cold starts)
+    request = HTTPXRequest(
+        connect_timeout=30,
+        read_timeout=30,
+        write_timeout=30,
+        pool_timeout=30,
+    )
+
+    application = Application.builder().token(config.bot_token).request(request).build()
+
     queue = QueueManager(config.database_url)
     await queue.setup()
 
@@ -165,9 +176,22 @@ async def main() -> None:
     application.add_handler(CommandHandler("queue", queue_command))
     application.add_handler(CallbackQueryHandler(handle_controls))
 
-    await application.initialize()
+    # Retry initialize() because it calls getMe() and can timeout if Telegram is temporarily unreachable
+    last_err: Exception | None = None
+    for attempt in range(1, 11):
+        try:
+            await application.initialize()
+            break
+        except (TimedOut, NetworkError) as e:
+            last_err = e
+            wait_s = min(5 * attempt, 30)
+            logging.warning("Telegram init failed (attempt %s/10): %s. Retrying in %ss", attempt, e, wait_s)
+            await asyncio.sleep(wait_s)
+    else:
+        raise RuntimeError(f"Telegram still unreachable after retries: {last_err}")
+
     await application.start()
-    await application.updater.start_polling()
+    await application.updater.start_polling(drop_pending_updates=True)
 
     await asyncio.Event().wait()
 
