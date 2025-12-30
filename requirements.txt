@@ -5,7 +5,3 @@ redis==5.0.8
 telethon==1.36.0
 websockets==13.0.1
 yt-dlp==2024.8.6
-
-# Voice chat stack (pre-release)
-# DO NOT pin tgcalls manually; pytgcalls will pull the required dev build
-pytgcalls==3.0.0.dev6
