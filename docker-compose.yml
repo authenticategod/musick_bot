@@ -1,35 +1,35 @@
+version: "3.9"
+
 services:
   redis:
-    image: redis:7-alpine
+    image: redis:7
     ports:
       - "6379:6379"
+
   bot:
     build: .
-    environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=/app/queues.db
+    command: ["python", "-m", "telegram_music_bot.bot_client"]
+    env_file:
+      - .env
     depends_on:
       - redis
+    volumes:
+      - ./data:/app/data
+
   premium:
     build: .
-    command: ["python", "premium_client.py"]
-    environment:
-      - API_ID=${API_ID}
-      - API_HASH=${API_HASH}
-      - SESSION_NAME=${SESSION_NAME}
-      - REDIS_URL=redis://redis:6379/0
+    command: ["python", "-m", "telegram_music_bot.premium_client"]
+    env_file:
+      - .env
     depends_on:
       - redis
+    volumes:
+      - ./data:/app/data
+
   bridge:
     build: .
-    command: ["python", "bridge_server.py"]
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - BRIDGE_PORT=8765
-      - HEALTH_PORT=8080
-    ports:
-      - "8765:8765"
-      - "8080:8080"
+    command: ["python", "-m", "telegram_music_bot.bridge_server"]
+    env_file:
+      - .env
     depends_on:
       - redis

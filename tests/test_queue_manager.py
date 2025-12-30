@@ -1,12 +1,6 @@
-import sys
-from pathlib import Path
-
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(PROJECT_ROOT))
-
-from queue_manager import QueueItem, QueueManager  # noqa: E402
+from queue_manager import QueueItem, QueueManager
 
 
 @pytest.mark.asyncio
