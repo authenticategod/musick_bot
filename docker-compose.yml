@@ -1,0 +1,35 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  bot:
+    build: .
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=/app/queues.db
+    depends_on:
+      - redis
+  premium:
+    build: .
+    command: ["python", "premium_client.py"]
+    environment:
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+      - SESSION_NAME=${SESSION_NAME}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+  bridge:
+    build: .
+    command: ["python", "bridge_server.py"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - BRIDGE_PORT=8765
+      - HEALTH_PORT=8080
+    ports:
+      - "8765:8765"
+      - "8080:8080"
+    depends_on:
+      - redis
