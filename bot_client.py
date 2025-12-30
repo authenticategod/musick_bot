@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import socket
 from typing import Any
 
+import httpx
 import redis.asyncio as redis
 from telegram import Update
 from telegram.error import NetworkError, TimedOut
@@ -28,6 +30,34 @@ class BridgeClient:
 
     async def send_action(self, payload: dict[str, Any]) -> None:
         await self._redis.publish("music_actions", json.dumps(payload))
+
+
+async def telegram_connectivity_check(bot_token: str) -> None:
+    """
+    Hard proof check:
+    1) DNS resolution for api.telegram.org
+    2) Direct HTTPS GET to getMe
+    If this fails, PTB initialize() will fail too.
+    """
+    host = "api.telegram.org"
+
+    print(f"[net] Checking DNS for {host}...")
+    infos = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    addrs = sorted({info[4][0] for info in infos})
+    print(f"[net] {host} resolves to: {addrs}")
+
+    url = f"https://{host}/bot{bot_token}/getMe"
+    print(f"[net] Checking HTTPS reachability: {url}")
+
+    timeout = httpx.Timeout(connect=10.0, read=10.0, write=10.0, pool=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.get(url)
+        print(f"[net] Telegram HTTP status: {r.status_code}")
+        print(f"[net] Telegram response (first 200 chars): {r.text[:200]}")
+
+        # If token is wrong, you'll usually see 401 here quickly (not a timeout).
+        if r.status_code == 401:
+            raise RuntimeError("BOT_TOKEN is invalid (Telegram returned 401). Fix BOT_TOKEN in Railway Variables.")
 
 
 async def play(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -151,7 +181,23 @@ async def main() -> None:
     config = load_bot_config()
     logging.basicConfig(level=config.log_level)
 
-    # Increase Telegram HTTP timeouts (Railway can be jittery during cold starts)
+    # 1) Prove Telegram is reachable (prints DNS + HTTP status).
+    #    If it fails here, your bot can't start on that host.
+    last_check_err: Exception | None = None
+    for attempt in range(1, 6):
+        try:
+            await telegram_connectivity_check(config.bot_token)
+            last_check_err = None
+            break
+        except Exception as e:
+            last_check_err = e
+            wait_s = min(5 * attempt, 20)
+            logging.warning("Telegram connectivity check failed (attempt %s/5): %s. Retrying in %ss", attempt, e, wait_s)
+            await asyncio.sleep(wait_s)
+    if last_check_err is not None:
+        raise RuntimeError(f"Telegram is not reachable from this container: {last_check_err}")
+
+    # 2) Larger timeouts for PTB itself
     request = HTTPXRequest(
         connect_timeout=30,
         read_timeout=30,
@@ -176,19 +222,20 @@ async def main() -> None:
     application.add_handler(CommandHandler("queue", queue_command))
     application.add_handler(CallbackQueryHandler(handle_controls))
 
-    # Retry initialize() because it calls getMe() and can timeout if Telegram is temporarily unreachable
+    # 3) Retry initialize() because it calls getMe()
     last_err: Exception | None = None
     for attempt in range(1, 11):
         try:
             await application.initialize()
+            last_err = None
             break
         except (TimedOut, NetworkError) as e:
             last_err = e
             wait_s = min(5 * attempt, 30)
             logging.warning("Telegram init failed (attempt %s/10): %s. Retrying in %ss", attempt, e, wait_s)
             await asyncio.sleep(wait_s)
-    else:
-        raise RuntimeError(f"Telegram still unreachable after retries: {last_err}")
+    if last_err is not None:
+        raise RuntimeError(f"Telegram init still failing after retries: {last_err}")
 
     await application.start()
     await application.updater.start_polling(drop_pending_updates=True)
